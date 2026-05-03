@@ -1,161 +1,291 @@
----
-title: EAS Build
-sidebar_title: Introduction
-description: EAS Build is a hosted service for building app binaries for your Expo and React Native projects.
----
+import React, { useEffect, useMemo, useState } from "react";
 
-import { Cube01Icon } from '@expo/styleguide-icons/outline/Cube01Icon';
+// Simple PWA-ready Daily Schedule App
+// - Saves tasks to localStorage
+// - Lets you add/remove tasks
+// - Basic reminder (browser notification if enabled)
+// - Installable on phone when deployed (see instructions below)
 
-import { BoxLink } from '~/ui/components/BoxLink';
-import { Collapsible } from '~/ui/components/Collapsible';
-import { NoIcon, YesIcon } from '~/ui/components/DocIcons';
-import { FAQ } from '~/ui/components/FAQ';
-import { Terminal } from '~/ui/components/Snippet';
+export default function DailyScheduleApp() {
+  const [tasks, setTasks] = useState(() => {
+    const saved = localStorage.getItem("tasks");
+    return (
+      JSON.parse(saved) || [
+        { id: 1, time: "06:30", task: "Wake up" },
+        { id: 2, time: "07:30", task: "Learning (finance/trading)" },
+        { id: 3, time: "09:30", task: "Practice / Job search" },
+        { id: 4, time: "12:30", task: "Lunch / Break" },
+        { id: 5, time: "13:30", task: "Skill building" },
+        { id: 6, time: "15:30", task: "Exercise / Walk" },
+        { id: 7, time: "17:00", task: "Free time" },
+        { id: 8, time: "18:30", task: "Review + learning" },
+        { id: 9, time: "20:00", task: "Relax" },
+        { id: 10, time: "22:30", task: "Sleep" }
+      ]
+    );
+  });
 
-**EAS Build** is a hosted Expo Application Services (EAS) service that builds app binaries (also called [standalone apps](/more/glossary-of-terms/#standalone-app)) for your Expo and React Native projects.
+  const [newTime, setNewTime] = useState("");
+  const [newTask, setNewTask] = useState("");
+  const [permission, setPermission] = useState("default");
 
-EAS Build makes building your apps for distribution simple and easy to automate by providing defaults that work well for Expo and React Native projects out of the box, and by handling your app signing credentials for you (if you wish). It also makes sharing builds with your team easier than ever with [internal distribution](/build/internal-distribution/) (using [ad hoc](/build/internal-distribution/) and/or enterprise "universal" provisioning), deeply integrates with EAS Submit for app store submissions, and has first-class support for the [`expo-updates`](/build/updates/) library.
+  useEffect(() => {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+  }, [tasks]);
 
-EAS Build is also designed to work for any native project, whether or not you use Expo and React Native. It's the fastest way to get from `npx create-expo-app` or `npx @react-native-community/cli@latest init` to app stores.
+  useEffect(() => {
+    if ("Notification" in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
 
-## Quick start
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => a.time.localeCompare(b.time));
+  }, [tasks]);
 
-> **info** The `eas` commands below require EAS CLI. See [How to install EAS CLI](/eas/cli/#installation) for more information.
+  const addTask = () => {
+    if (newTime && newTask) {
+      setTasks([
+        ...tasks,
+        { id: Date.now(), time: newTime, task: newTask }
+      ]);
+      setNewTime("");
+      setNewTask("");
+    }
+  };
 
-To build your app, run the following command:
+  const deleteTask = (id) => {
+    setTasks(tasks.filter((t) => t.id !== id));
+  };
 
-<Terminal cmd={['$ eas build --platform all']} />
+  const requestNotifications = async () => {
+    if (!("Notification" in window)) return;
+    const res = await Notification.requestPermission();
+    setPermission(res);
+  };
 
-This command sends your project to EAS Build and produces installable binaries for Android and iOS. You can also build for one platform at a time by passing in `--platform android` or `--platform ios` as desired. For complete setup instructions, see [Create your first build](/build/setup/).
+  // Very simple checker (runs every minute)
+  useEffect(() => {
+    if (!("Notification" in window) || permission !== "granted") return;
 
-## Key features
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const current = `${hh}:${mm}`;
 
-- Cloud builds for Android and iOS with consistent environments
-- Automatically provision and manage app signing credentials or use your own
-- Share [internal distribution](/build/internal-distribution/) builds with a URL
-- Automate builds with [build profiles](/build/eas-json/#build-profiles) in **eas.json** (named sets of build settings) and integrations with [EAS Workflows](/eas/workflows/get-started/) or [CI pipelines](/build/building-on-ci/)
-- Auto-submit successful builds to app stores via [`--auto-submit`](/build/automate-submissions/) and EAS Submit
-- First-class [`expo-updates` integration](/build/updates/) with per-profile channels and [runtime version](/eas-update/runtime-versions/) guidance
-- Reuse [development builds](/develop/development-builds/introduction/) across your team. When two team members run `eas build:dev` and the project fingerprint matches, the existing build is downloaded from EAS instead of creating a new one
-- Faster builds via [dependency caching and custom cache paths](/build-reference/caching/)
-- Install builds and updates on devices with [Expo Orbit](https://expo.dev/orbit)
+      tasks.forEach((t) => {
+        if (t.time === current) {
+          new Notification("Task Reminder", { body: t.task });
+        }
+      });
+    }, 60000);
 
-## When to use EAS Build
+    return () => clearInterval(interval);
+  }, [tasks, permission]);
 
-| Scenario                                                                             | Recommendation |
-| ------------------------------------------------------------------------------------ | -------------- |
-| Build production-ready binaries for app stores                                       | <YesIcon />    |
-| Share builds with testers via [internal distribution](/build/internal-distribution/) | <YesIcon />    |
-| Consistent builds across team members without local environment setup                | <YesIcon />    |
-| Automate builds from CI or [EAS Workflows](/eas/workflows/get-started/)              | <YesIcon />    |
-| Managed app signing credentials                                                      | <YesIcon />    |
-| Debugging native code locally                                                        | <NoIcon />     |
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="text-xl font-bold mb-4">Daily Schedule</h1>
 
-## Frequently asked questions
+      <button
+        onClick={requestNotifications}
+        className="mb-3 bg-green-500 text-white p-2 rounded w-full"
+      >
+        Enable Reminders
+      </button>
 
-<FAQ>
+      <ul className="mb-4">
+        {sortedTasks.map((item) => (
+          <li
+            key={item.id}
+            className="flex justify-between items-center border-b py-2"
+          >
+            <span className="font-mono">{item.time}</span>
+            <span className="flex-1 mx-2">{item.task}</span>
+            <button
+              onClick={() => deleteTask(item.id)}
+              className="text-red-500"
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
 
-<Collapsible summary="How do I share builds with my team before submitting to app stores?">
+      <div className="flex flex-col gap-2">
+        <input
+          type="time"
+          value={newTime}
+          onChange={(e) => setNewTime(e.target.value)}
+          className="border p-2 rounded"
+        />
 
-Use [internal distribution](/build/internal-distribution/) to share builds with a URL. Set `"distribution": "internal"` in your [build profile](/build/eas-json/#build-profiles) in **eas.json** to generate installable Android Package (APK) files for Android or [ad hoc builds](/build/internal-distribution/) for iOS.
+        <input
+          type="text"
+          placeholder="Task"
+          value={newTask}
+          onChange={(e) => setNewTask(e.target.value)}
+          className="border p-2 rounded"
+        />
 
-</Collapsible>
+        <button
+          onClick={addTask}
+          className="bg-blue-500 text-white p-2 rounded"
+        >
+          Add Task
+        </button>
+      </div>
 
-<Collapsible summary="Can I use EAS Build with existing React Native projects?">
+      <p className="text-xs text-gray-500 mt-4">
+        Tip: After deploying, open in Chrome → "Add to Home Screen" to install.
+      </p>
+    </div>
+  );
+}
+import React, { useEffect, useMemo, useState } from "react";
 
-Yes. EAS Build works with existing React Native projects created with `npx react-native init` or similar tools. See [Overview of using Expo with existing React Native apps](/bare/overview/) for more information.
+// Simple PWA-ready Daily Schedule App
+// - Saves tasks to localStorage
+// - Lets you add/remove tasks
+// - Basic reminder (browser notification if enabled)
+// - Installable on phone when deployed (see instructions below)
 
-</Collapsible>
+export default function DailyScheduleApp() {
+  const [tasks, setTasks] = useState(() => {
+    const saved = localStorage.getItem("tasks");
+    return (
+      JSON.parse(saved) || [
+        { id: 1, time: "06:30", task: "Wake up" },
+        { id: 2, time: "07:30", task: "Learning (finance/trading)" },
+        { id: 3, time: "09:30", task: "Practice / Job search" },
+        { id: 4, time: "12:30", task: "Lunch / Break" },
+        { id: 5, time: "13:30", task: "Skill building" },
+        { id: 6, time: "15:30", task: "Exercise / Walk" },
+        { id: 7, time: "17:00", task: "Free time" },
+        { id: 8, time: "18:30", task: "Review + learning" },
+        { id: 9, time: "20:00", task: "Relax" },
+        { id: 10, time: "22:30", task: "Sleep" }
+      ]
+    );
+  });
 
-<Collapsible summary="Does EAS Build handle app signing credentials?">
+  const [newTime, setNewTime] = useState("");
+  const [newTask, setNewTask] = useState("");
+  const [permission, setPermission] = useState("default");
 
-Yes. EAS Build can generate and manage Android [keystores](/app-signing/app-credentials/#android), iOS [provisioning profiles](/app-signing/app-credentials/#ios) and [distribution certificates](/app-signing/app-credentials/#ios), or use credentials you provide. See [App signing credentials](/app-signing/app-credentials/) for more information.
+  useEffect(() => {
+    localStorage.setItem("tasks", JSON.stringify(tasks));
+  }, [tasks]);
 
-</Collapsible>
+  useEffect(() => {
+    if ("Notification" in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
 
-<Collapsible summary="Can I run builds locally instead of in the cloud?">
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => a.time.localeCompare(b.time));
+  }, [tasks]);
 
-Yes. Use [local builds](/build-reference/local-builds/) with `eas build --local` to run builds on your machine. This is useful for debugging or for security policies that require local builds.
+  const addTask = () => {
+    if (newTime && newTask) {
+      setTasks([
+        ...tasks,
+        { id: Date.now(), time: newTime, task: newTask }
+      ]);
+      setNewTime("");
+      setNewTask("");
+    }
+  };
 
-</Collapsible>
+  const deleteTask = (id) => {
+    setTasks(tasks.filter((t) => t.id !== id));
+  };
 
-<Collapsible summary="Can I use EAS Build with EAS Workflows or CI pipelines?">
+  const requestNotifications = async () => {
+    if (!("Notification" in window)) return;
+    const res = await Notification.requestPermission();
+    setPermission(res);
+  };
 
-Yes. EAS Build integrates with [EAS Workflows](/eas/workflows/get-started/) using the `build` job type. Add a build job to your workflow configuration, for example:
+  // Very simple checker (runs every minute)
+  useEffect(() => {
+    if (!("Notification" in window) || permission !== "granted") return;
 
-```yaml
-jobs:
-  build_ios:
-    type: build
-    params:
-      platform: ios
-```
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const current = `${hh}:${mm}`;
 
-The build job supports builds for both platforms or conditional builds based on the branch:
+      tasks.forEach((t) => {
+        if (t.time === current) {
+          new Notification("Task Reminder", { body: t.task });
+        }
+      });
+    }, 60000);
 
-```yaml
-jobs:
-  build:
-    type: build
-    params:
-      platform: all
-      profile: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
-```
+    return () => clearInterval(interval);
+  }, [tasks, permission]);
 
-For more information and other usage examples, see the [EAS Workflows build job](/eas/workflows/pre-packaged-jobs#build).
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="text-xl font-bold mb-4">Daily Schedule</h1>
 
-EAS Build supports [builds from GitHub](/build/building-from-github/) and [building on CI](/build/building-on-ci/) with any provider.
+      <button
+        onClick={requestNotifications}
+        className="mb-3 bg-green-500 text-white p-2 rounded w-full"
+      >
+        Enable Reminders
+      </button>
 
-</Collapsible>
+      <ul className="mb-4">
+        {sortedTasks.map((item) => (
+          <li
+            key={item.id}
+            className="flex justify-between items-center border-b py-2"
+          >
+            <span className="font-mono">{item.time}</span>
+            <span className="flex-1 mx-2">{item.task}</span>
+            <button
+              onClick={() => deleteTask(item.id)}
+              className="text-red-500"
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
 
-<Collapsible summary="What build server infrastructure does EAS Build use?">
+      <div className="flex flex-col gap-2">
+        <input
+          type="time"
+          value={newTime}
+          onChange={(e) => setNewTime(e.target.value)}
+          className="border p-2 rounded"
+        />
 
-Android builds run on Linux runners hosted in Google Cloud Platform, and iOS builds run on macOS runners hosted in Expo's macOS cloud. See [Build server infrastructure](/build-reference/infrastructure/).
+        <input
+          type="text"
+          placeholder="Task"
+          value={newTask}
+          onChange={(e) => setNewTask(e.target.value)}
+          className="border p-2 rounded"
+        />
 
-</Collapsible>
+        <button
+          onClick={addTask}
+          className="bg-blue-500 text-white p-2 rounded"
+        >
+          Add Task
+        </button>
+      </div>
 
-</FAQ>
+      <p className="text-xs text-gray-500 mt-4">
+        Tip: After deploying, open in Chrome → "Add to Home Screen" to install.
+      </p>
+    </div>
+  );
+}
 
-## Get started
-
-<BoxLink
-  title="Create your first build"
-  description="It should only take a few minutes in total to get up and running for iOS and/or Android."
-  href="/build/setup"
-  Icon={Cube01Icon}
-/>
-
-<BoxLink
-  title="Share your apps with internal testers"
-  description="EAS Build can help share preview builds of your app with a single URL."
-  href="/build/internal-distribution"
-  Icon={Cube01Icon}
-/>
-
-<BoxLink
-  title="Automate submissions"
-  description="Learn how EAS Build can take your successful builds and handle uploading them to app stores automatically."
-  href="/build/automate-submissions"
-  Icon={Cube01Icon}
-/>
-
-<BoxLink
-  title="App version management"
-  description="Automate version bumps so you never have to think about them again."
-  href="/build-reference/app-versions"
-  Icon={Cube01Icon}
-/>
-
-<BoxLink
-  title="Run builds locally or on your own infrastructure"
-  description="EAS Build is a hosted service, and it can also run on your own machine, for example, to debug or to comply with company security policies."
-  href="/build-reference/local-builds"
-  Icon={Cube01Icon}
-/>
-
-<BoxLink
-  title="Limitations"
-  description="EAS Build is new and rapidly evolving, so we recommend getting familiar with the current limitations."
-  href="/build-reference/limitations"
-  Icon={Cube01Icon}
-/>
